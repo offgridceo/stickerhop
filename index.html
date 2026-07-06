@@ -203,7 +203,7 @@
 
         .preview-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
             gap: 1rem;
             margin-top: 1.5rem;
             max-height: 250px;
@@ -221,6 +221,7 @@
             align-items: center;
             justify-content: center;
             padding: 0.5rem;
+            position: relative;
         }
 
         .preview-item img, .preview-item video {
@@ -249,7 +250,6 @@
             display: block;
         }
 
-        /* Editing Suite Layout Modifiers */
         .editor-dashboard {
             background: var(--bg-primary);
             border: 1px solid var(--border);
@@ -297,6 +297,7 @@
             height: 6px;
             border-radius: 3px;
             outline: none;
+            margin-top: 0.5rem;
         }
 
         .export-options-grid {
@@ -425,7 +426,7 @@
                     </div>
                 </div>
 
-                <!-- NEW: Integrated Production Suite Editor Module -->
+                <!-- Production Suite Editor Module -->
                 <div class="editor-dashboard" id="scratch-editor-suite" style="display: none;">
                     <h3 style="font-size: 1.1rem; margin-bottom: 1rem; font-weight: 600;">Sticker Configuration Suite</h3>
                     
@@ -438,8 +439,8 @@
                     </div>
 
                     <div class="editor-row" id="video-trimmer-row" style="display: none;">
-                        <label>Video Time Synchronization Window (Max 3s Limit): <span id="trim-val" style="color: var(--accent);">0</span>s</label>
-                        <input type="range" class="range-slider" id="video-trim-offset" min="0" max="10" step="0.5" value="0" oninput="updateTrimmerReadout(this.value)">
+                        <label>Video Time Window Start Position: <span id="trim-val" style="color: var(--accent);">0.00</span>s (Creates a 3s clip)</label>
+                        <input type="range" class="range-slider" id="video-trim-offset" min="0" max="10" step="0.05" value="0" oninput="handleTrimmerSlide(this.value)">
                     </div>
 
                     <div class="editor-row" id="bg-remover-row" style="display: none;">
@@ -476,7 +477,6 @@
         <!-- Contextual Documentation Module -->
         <section class="guide-section">
             
-            <!-- Help File 1: Migration Pipeline -->
             <div id="guide-transfer" class="guide-panel active">
                 <h2>Migration Pipeline Guide</h2>
                 <ul class="guide-steps">
@@ -495,13 +495,12 @@
                 </ul>
             </div>
 
-            <!-- Help File 2: Custom Compilation -->
             <div id="guide-scratch" class="guide-panel">
                 <h2>Custom Asset Integration Guide</h2>
                 <ul class="guide-steps">
                     <li>
                         <h4>Normalize Asset Dimensions & Media Files</h4>
-                        <p>StickerHop now dynamically parses video clips and GIFs. Drop files directly onto the app window. For animations, drag the slider tool matrix to crop out an explicit 3-second runtime frame range.</p>
+                        <p>StickerHop now dynamically parses video clips and GIFs. Drop files directly onto the app window. Drag the slider track to scrub through the timeline and set your exact 3-second starting point visually.</p>
                     </li>
                     <li>
                         <h4>Apply Alpha Layer Masks & AI Cutting</h4>
@@ -514,7 +513,6 @@
                 </ul>
             </div>
 
-            <!-- Help File 3: HD Asset Extraction -->
             <div id="guide-export" class="guide-panel">
                 <h2>Asset Export Engine Instructions</h2>
                 <ul class="guide-steps">
@@ -545,12 +543,13 @@
         let selectedFramingGeometry = 'square';
         let activeRawScratchFile = null;
         let activeTrimStartOffset = 0;
+        let activePreviewVideoElement = null;
 
         // Binds browser window hooks to block external drag default tab overrides
         window.addEventListener("dragover", function(e) { e.preventDefault(); }, false);
         window.addEventListener("drop", function(e) { e.preventDefault(); }, false);
 
-        // Core Setup Hook: Wire custom dropzones to override default tab loads
+        // Wire custom dropzones to override default tab loads
         document.querySelectorAll('.dropzone').forEach(zone => {
             zone.addEventListener('dragover', function(e) {
                 e.preventDefault();
@@ -677,11 +676,13 @@
             const editorSuite = document.getElementById('scratch-editor-suite');
             const trimmerRow = document.getElementById('video-trimmer-row');
             const bgRow = document.getElementById('bg-remover-row');
+            const slider = document.getElementById('video-trim-offset');
 
             status.className = "status-msg info";
             status.innerText = "Staging media elements into memory thread buffers...";
             preview.innerHTML = "";
             editorSuite.style.display = "block";
+            activePreviewVideoElement = null;
 
             if (file.type.startsWith('video/')) {
                 trimmerRow.style.display = "block";
@@ -690,8 +691,21 @@
                 const videoEl = document.createElement('video');
                 videoEl.src = URL.createObjectURL(file);
                 videoEl.muted = true;
-                videoEl.autoplay = true;
-                videoEl.loop = true;
+                videoEl.playsInline = true;
+                
+                activePreviewVideoElement = videoEl;
+
+                // Dynamically sets slider parameters once video metadata is known
+                videoEl.onloadedmetadata = function() {
+                    const maxStart = Math.max(0, videoEl.duration - 3);
+                    slider.max = maxStart;
+                    slider.value = 0;
+                    activeTrimStartOffset = 0;
+                    document.getElementById('trim-val').innerText = "0.00";
+                    
+                    // Starts loop processing on target bounds
+                    runVideoEditorLoop();
+                };
                 
                 const wrapper = document.createElement('div');
                 wrapper.className = 'preview-item';
@@ -699,7 +713,7 @@
                 preview.appendChild(wrapper);
                 
                 status.className = "status-msg success";
-                status.innerText = "Video loop loaded. Use configuration handles below to set parameters.";
+                status.innerText = "Video loaded. Drag slider to visually adjust your 3-second loop windows.";
                 document.getElementById('scratch-download-btn').style.display = "block";
             } else {
                 trimmerRow.style.display = "none";
@@ -719,6 +733,30 @@
             }
         }
 
+        // Active Frame scrubbing tracker engine
+        function handleTrimmerSlide(val) {
+            activeTrimStartOffset = parseFloat(val);
+            document.getElementById('trim-val').innerText = activeTrimStartOffset.toFixed(2);
+            
+            if (activePreviewVideoElement) {
+                activePreviewVideoElement.currentTime = activeTrimStartOffset;
+            }
+        }
+
+        // Keeps video looping strictly inside the 3-second window visually
+        function runVideoEditorLoop() {
+            if (!activePreviewVideoElement) return;
+            
+            activePreviewVideoElement.play();
+            
+            activePreviewVideoElement.addEventListener('timeupdate', function() {
+                const endTime = activeTrimStartOffset + 3;
+                if (activePreviewVideoElement.currentTime >= endTime || activePreviewVideoElement.currentTime >= activePreviewVideoElement.duration) {
+                    activePreviewVideoElement.currentTime = activeTrimStartOffset;
+                }
+            });
+        }
+
         function setFramingGeometry(shape) {
             selectedFramingGeometry = shape;
             document.getElementById('toggle-rect').classList.toggle('active', shape === 'square');
@@ -730,11 +768,6 @@
             }
         }
 
-        function updateTrimmerReadout(val) {
-            document.getElementById('trim-val').innerText = val;
-            activeTrimStartOffset = parseFloat(val);
-        }
-
         // Local Machine-Learning Execution Loop
         async function executeClientSideAiSegmentation() {
             if (!activeRawScratchFile || activeRawScratchFile.type.startsWith('video/')) return;
@@ -744,7 +777,6 @@
             status.innerText = "Initializing WASM execution layers. Downloading neural map (~40MB, cached locally)...";
 
             try {
-                // Invokes the local inference bundle mapping directly inside browser cache contexts
                 const transparentBlob = await imglyBackgroundRemoval.removeBackground(activeRawScratchFile);
                 activeRawScratchFile = transparentBlob;
                 
