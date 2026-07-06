@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StickerHop | Serverless Sticker Studio</title>
+    
+    <!-- External Dependencies for Compression and Extraction -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-primary: #121214;
+            --bg-secondary: #1a1a1e;
+            --accent: #00e676;
+            --accent-hover: #00c853;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0a5;
+            --border: #2c2c35;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            max-width: 750px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            letter-spacing: -0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        header h1 span {
+            color: var(--accent);
+        }
+
+        header p {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .nav-toggle {
+            display: flex;
+            background: var(--bg-secondary);
+            padding: 0.35rem;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            margin-bottom: 2rem;
+        }
+
+        .nav-btn {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .nav-btn.active {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .workspace {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            padding: 2.5rem;
+            margin-bottom: 3rem;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        }
+
+        .view-panel {
+            display: none;
+        }
+
+        .view-panel.active {
+            display: block;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            font-weight: 700;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .input-field {
+            width: 100%;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            padding: 0.85rem 1rem;
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .input-field:focus {
+            border-color: var(--accent);
+        }
+
+        .dropzone {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 3rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            background: var(--bg-primary);
+            transition: all 0.2s ease;
+        }
+
+        .dropzone:hover, .dropzone.dragover {
+            border-color: var(--accent);
+            background: rgba(0, 230, 118, 0.02);
+        }
+
+        .dropzone p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            background: var(--accent);
+            color: var(--bg-primary);
+            border: none;
+            padding: 1rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 1rem;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .preview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
+            max-height: 250px;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+        }
+
+        .preview-item {
+            aspect-ratio: 1;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.5rem;
+        }
+
+        .preview-item img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .status-msg {
+            margin-top: 1rem;
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .status-msg.info {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-secondary);
+            display: block;
+        }
+
+        .status-msg.success {
+            background: rgba(0, 230, 118, 0.1);
+            color: var(--accent);
+            display: block;
+        }
+
+        .guide-section {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            padding: 2.5rem;
+        }
+
+        .guide-panel {
+            display: none;
+        }
+
+        .guide-panel.active {
+            display: block;
+        }
+
+        .guide-steps {
+            list-style: none;
+        }
+
+        .guide-steps li {
+            position: relative;
+            padding-left: 2.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .guide-steps li::before {
+            content: counter(step-counter);
+            counter-increment: step-counter;
+            position: absolute;
+            left: 0;
+            top: 2px;
+            width: 1.5rem;
+            height: 1.5rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .guide-steps {
+            counter-reset: step-counter;
+        }
+
+        .guide-steps h4 {
+            font-size: 1.05rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .guide-steps p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        code {
+            background: var(--bg-primary);
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+            color: #ff5252;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Sticker<span>Hop</span></h1>
+            <p>The open-source, serverless sticker tool.</p>
+        </header>
+
+        <!-- Navigation System Toggle -->
+        <div class="nav-toggle">
+            <button class="nav-btn active" onclick="switchView('transfer')">Transfer from Telegram</button>
+            <button class="nav-btn" onclick="switchView('scratch')">Make from Scratch</button>
+        </div>
+
+        <!-- Working Canvas Module -->
+        <main class="workspace">
+            
+            <!-- Interface 1: Telegram Migration Panel -->
+            <div id="panel-transfer" class="view-panel active">
+                <h2>Telegram Migration Engine</h2>
+                <div class="form-group">
+                    <label>Upload Zip File from Telegram Bot</label>
+                    <div class="dropzone" id="tg-dropzone" onclick="document.getElementById('tg-file-input').click()">
+                        <p>Drag & drop your downloaded Telegram sticker archive ZIP file here, or click to browse</p>
+                        <input type="file" id="tg-file-input" accept=".zip" style="display:none" onchange="handleTgZipUpload(this)">
+                    </div>
+                </div>
+                <div id="tg-status" class="status-msg"></div>
+                <div class="preview-grid" id="tg-preview"></div>
+                <button class="btn-primary" id="tg-download-btn" style="display:none" onclick="downloadCompiledPack()">Download WhatsApp Package</button>
+            </div>
+
+            <!-- Interface 2: Production Creator Panel -->
+            <div id="panel-scratch" class="view-panel">
+                <h2>Custom Asset Studio</h2>
+                <div class="form-group">
+                    <label>Pack Identification Metadata</label>
+                    <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+                        <input type="text" id="scratch-pack-name" class="input-field" placeholder="Pack Title (e.g., My Pack)">
+                        <input type="text" id="scratch-pack-author" class="input-field" placeholder="Creator Name">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Import Static Design Assets (PNG/JPG/WEBP)</label>
+                    <div class="dropzone" id="scratch-dropzone" onclick="document.getElementById('scratch-file-input').click()">
+                        <p>Select up to 30 custom assets to bundle into your payload</p>
+                        <input type="file" id="scratch-file-input" accept="image/*" multiple style="display:none" onchange="handleScratchUpload(this)">
+                    </div>
+                </div>
+                <div id="scratch-status" class="status-msg"></div>
+                <div class="preview-grid" id="scratch-preview"></div>
+                <button class="btn-primary" id="scratch-download-btn" style="display:none" onclick="downloadScratchPack()">Compile & Download Pack</button>
+            </div>
+
+        </main>
+
+        <!-- Contextual Documentation Module -->
+        <section class="guide-section">
+            
+            <!-- Help File 1: Migration Pipeline -->
+            <div id="guide-transfer" class="guide-panel active">
+                <h2>Migration Pipeline Guide</h2>
+                <ul class="guide-steps">
+                    <li>
+                        <h4>Export Assets from Telegram</h4>
+                        <p>Open Telegram, navigate to your Settings > Stickers, click the three dots next to your chosen pack, and copy the link. Start a chat with the automated bot <code>@StickerDownloadBot</code>, set the output type to Webp, and paste your link to receive a compiled ZIP archive.</p>
+                    </li>
+                    <li>
+                        <h4>Decompress and Compile</h4>
+                        <p>Drop that ZIP folder directly into the StickerHop interface above. The browser unpacks the files locally, normalizes asset metadata, and generates a structured cross-platform container package.</p>
+                    </li>
+                    <li>
+                        <h4>Synchronize directly with WhatsApp</h4>
+                        <p>Download the compiled container from this site. Open any standard storage utility bridge application (such as <em>Sticker.ly</em> or <em>Sticked</em>) on your device, load the downloaded container file, and click "Add to WhatsApp" to commit the assets to your native keyboard tray.</p>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Help File 2: Custom Compilation -->
+            <div id="guide-scratch" class="guide-panel">
+                <h2>Custom Asset Integration Guide</h2>
+                <ul class="guide-steps">
+                    <li>
+                        <h4>Normalize Asset Dimensions</h4>
+                        <p>Ensure your source images use transparent background styling layers for the cleanest interface layout. StickerHop automatically downsamples, forces a square aspect ratio, and normalizes file dimensions to exactly 512x512 pixels inside the canvas runtime.</p>
+                    </li>
+                    <li>
+                        <h4>Build Manifest Payload</h4>
+                        <p>Enter your preferred custom Title and Creator branding name inside the metadata fields. This structural data maps directly into the underlying <code>manifest.json</code> metadata array within the target application.</p>
+                    </li>
+                    <li>
+                        <h4>Export Package to Chat Tray</h4>
+                        <p>Click compile to build your bundle. Export the file to your mobile device and open it using a localized terminal organizer app to instantly synchronize your personal custom design assets directly into your keyboard's active communication tray.</p>
+                    </li>
+                </ul>
+            </div>
+
+        </section>
+    </div>
+
+    <script>
+        // Active memory space for session bundles
+        let compiledStickersArray = [];
+
+        function switchView(target) {
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.guide-panel').forEach(g => g.classList.remove('active'));
+
+            if(target === 'transfer') {
+                document.querySelector('button[onclick="switchView(\'transfer\')"]').classList.add('active');
+                document.getElementById('panel-transfer').classList.add('active');
+                document.getElementById('guide-transfer').classList.add('active');
+            } else {
+                document.querySelector('button[onclick="switchView(\'scratch\')"]').classList.add('active');
+                document.getElementById('panel-scratch').classList.add('active');
+                document.getElementById('guide-scratch').classList.add('active');
+            }
+        }
+
+        // Processing Module: Telegram Archives
+        async function handleTgZipUpload(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const status = document.getElementById('tg-status');
+            const preview = document.getElementById('tg-preview');
+            const downloadBtn = document.getElementById('tg-download-btn');
+            
+            status.className = "status-msg info";
+            status.innerText = "Decompressing archive package data in browser thread...";
+            preview.innerHTML = "";
+            compiledStickersArray = [];
+
+            try {
+                const zip = await JSZip.loadAsync(file);
+                let filesProcessedCount = 0;
+
+                for (const [filename, zipEntry] of Object.entries(zip.files)) {
+                    if (!zipEntry.dir && (filename.endsWith('.webp') || filename.endsWith('.png'))) {
+                        filesProcessedCount++;
+                        const blob = await zipEntry.async("blob");
+                        const fileUrl = URL.createObjectURL(blob);
+
+                        compiledStickersArray.push({ name: `sticker_${filesProcessedCount}.webp`, blob: blob });
+
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'preview-item';
+                        const img = document.createElement('img');
+                        img.src = fileUrl;
+                        wrapper.appendChild(img);
+                        preview.appendChild(wrapper);
+                    }
+                }
+
+                if (compiledStickersArray.length > 0) {
+                    status.className = "status-msg success";
+                    status.innerText = `Successfully parsed ${filesProcessedCount} assets from archive. Ready to compile bundle.`;
+                    downloadBtn.style.display = "block";
+                } else {
+                    throw new Error("No compatible static asset file extensions (.webp/.png) detected within archive root.");
+                }
+
+            } catch (err) {
+                status.className = "status-msg";
+                status.style.backgroundColor = "rgba(255, 82, 82, 0.1)";
+                status.style.color = "#ff5252";
+                status.style.display = "block";
+                status.innerText = `Extraction failed: ${err.message}`;
+            }
+        }
+
+        // Core Compiler Engine: Building the Target Package Output
+        async function downloadCompiledPack() {
+            if (compiledStickersArray.length === 0) return;
+
+            const exportZip = new JSZip();
+            
+            // Build the manifest blueprint format required by bridge apps
+            const manifest = {
+                "identifier": "stickerhop_" + Date.now(),
+                "name": "StickerHop Migration",
+                "publisher": "StickerHop Studio",
+                "stickers": compiledStickersArray.map(s => ({ "image_file": s.name, "emojis": ["⚡"] }))
+            };
+
+            exportZip.file("manifest.json", JSON.stringify(manifest, null, 2));
+            compiledStickersArray.forEach(s => {
+                exportZip.file(s.name, s.blob);
+            });
+
+            const finalArchiveBlob = await exportZip.generateAsync({ type: "blob" });
+            const downloadUrl = URL.createObjectURL(finalArchiveBlob);
+            
+            const anchorElement = document.createElement('a');
+            anchorElement.href = downloadUrl;
+            anchorElement.download = "stickerhop_migration_payload.zip";
+            document.body.appendChild(anchorElement);
+            anchorElement.click();
+            document.body.removeChild(anchorElement);
+        }
+
+        // Processing Module: Custom Canvas Workspace Creator Studio
+        let scratchStickersArray = [];
+
+        function handleScratchUpload(input) {
+            const files = input.files;
+            if (!files || files.length === 0) return;
+
+            const status = document.getElementById('scratch-status');
+            const preview = document.getElementById('scratch-preview');
+            const downloadBtn = document.getElementById('scratch-download-btn');
+
+            status.className = "status-msg info";
+            status.innerText = "Rescaling asset frames onto normalization canvases...";
+            
+            let filesLoaded = 0;
+
+            Array.from(files).forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 512;
+                        canvas.height = 512;
+                        const ctx = canvas.getContext('2d');
+                        
+                        // Force layout structure normalization to uniform 512x512 matrix bounds
+                        ctx.drawImage(img, 0, 0, 512, 512);
+                        
+                        canvas.toBlob((blob) => {
+                            scratchStickersArray.push({ name: `custom_${Date.now()}_${index}.webp`, blob: blob });
+                            
+                            const wrapper = document.createElement('div');
+                            wrapper.className = 'preview-item';
+                            const previewImg = document.createElement('img');
+                            previewImg.src = URL.createObjectURL(blob);
+                            wrapper.appendChild(previewImg);
+                            preview.appendChild(wrapper);
+
+                            filesLoaded++;
+                            if(filesLoaded === files.length) {
+                                status.className = "status-msg success";
+                                status.innerText = `Successfully normalized ${filesLoaded} image frames to strict 512x512 specs.`;
+                                downloadBtn.style.display = "block";
+                            }
+                        }, 'image/webp');
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function downloadScratchPack() {
+            if (scratchStickersArray.length === 0) return;
+
+            const title = document.getElementById('scratch-pack-name').value || "Custom Pack";
+            const author = document.getElementById('scratch-pack-author').value || "StickerHop Creator";
+
+            const exportZip = new JSZip();
+            const manifest = {
+                "identifier": "stickerhop_scratch_" + Date.now(),
+                "name": title,
+                "publisher": author,
+                "stickers": scratchStickersArray.map(s => ({ "image_file": s.name, "emojis": ["🎨"] }))
+            };
+
+            exportZip.file("manifest.json", JSON.stringify(manifest, null, 2));
+            scratchStickersArray.forEach(s => {
+                exportZip.file(s.name, s.blob);
+            });
+
+            const finalArchiveBlob = await exportZip.generateAsync({ type: "blob" });
+            const downloadUrl = URL.createObjectURL(finalArchiveBlob);
+            
+            const anchorElement = document.createElement('a');
+            anchorElement.href = downloadUrl;
+            anchorElement.download = `${title.toLowerCase().replace(/\s+/g, '_')}_package.zip`;
+            document.body.appendChild(anchorElement);
+            anchorElement.click();
+            document.body.removeChild(anchorElement);
+        }
+    </script>
+</body>
+</html>
