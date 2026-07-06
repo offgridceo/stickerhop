@@ -203,12 +203,13 @@
 
         .preview-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
             gap: 1rem;
             margin-top: 1.5rem;
-            max-height: 250px;
+            max-height: 350px;
             overflow-y: auto;
             padding-right: 0.5rem;
+            justify-content: center;
         }
 
         .preview-item {
@@ -222,12 +223,23 @@
             justify-content: center;
             padding: 0.5rem;
             position: relative;
+            max-width: 240px;
+            margin: 0 auto;
         }
 
         .preview-item img, .preview-item video {
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
+        }
+
+        /* Fixed Aspect Bounding Overlays */
+        .crop-overlay-box {
+            position: absolute;
+            border: 2px dashed var(--accent);
+            cursor: move;
+            display: none;
+            box-shadow: 0 0 0 4000px rgba(0,0,0,0.6);
         }
 
         .status-msg {
@@ -268,36 +280,76 @@
 
         .toggle-group {
             display: flex;
-            gap: 0.5rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.25rem;
+            margin-bottom: 1rem;
         }
 
         .toggle-item {
             flex: 1;
             text-align: center;
             padding: 0.6rem;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
             border-radius: 6px;
             cursor: pointer;
             font-size: 0.85rem;
             font-weight: 600;
             color: var(--text-secondary);
+            transition: all 0.2s;
         }
 
         .toggle-item.active {
-            border-color: var(--accent);
+            background: var(--bg-primary);
             color: var(--accent);
-            background: rgba(0, 230, 118, 0.03);
         }
 
-        .range-slider {
-            width: 100%;
-            accent-color: var(--accent);
+        /* True Track Layout Components */
+        .dual-slider-container {
+            position: relative;
+            height: 40px;
+            margin-top: 1rem;
             background: var(--bg-secondary);
-            height: 6px;
-            border-radius: 3px;
-            outline: none;
-            margin-top: 0.5rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .dual-slider-track-highlight {
+            position: absolute;
+            height: 100%;
+            background: rgba(0, 230, 118, 0.15);
+            border-left: 2px solid var(--accent);
+            border-right: 2px solid var(--accent);
+            top: 0;
+            z-index: 1;
+        }
+
+        .range-slider-input {
+            position: absolute;
+            pointer-events: none;
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            opacity: 0;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: 2;
+        }
+
+        .range-slider-input::-webkit-slider-thumb {
+            pointer-events: all;
+            width: 20px;
+            height: 40px;
+            cursor: ew-resize;
+        }
+        
+        .range-slider-input::-moz-range-thumb {
+            pointer-events: all;
+            width: 20px;
+            height: 40px;
+            cursor: ew-resize;
         }
 
         .export-options-grid {
@@ -428,29 +480,46 @@
 
                 <!-- Production Suite Editor Module -->
                 <div class="editor-dashboard" id="scratch-editor-suite" style="display: none;">
-                    <h3 style="font-size: 1.1rem; margin-bottom: 1rem; font-weight: 600;">Sticker Configuration Suite</h3>
                     
-                    <div class="editor-row">
-                        <label>Target Framing Mode</label>
-                        <div class="toggle-group">
-                            <div class="toggle-item active" id="toggle-rect" onclick="setFramingGeometry('square')">Classic Square (1:1)</div>
-                            <div class="toggle-item" id="toggle-circle" onclick="setFramingGeometry('circle')">Die-Cut Circle</div>
+                    <!-- Control Modes Toggle -->
+                    <div class="toggle-group">
+                        <div class="toggle-item active" id="mode-trim-btn" onclick="toggleEditorTab('trim')">Timeline Trimmer</div>
+                        <div class="toggle-item" id="mode-crop-btn" onclick="toggleEditorTab('crop')">Fixed Size Crop</div>
+                    </div>
+                    
+                    <!-- Sub-Panel A: Gallery-Style Trimmer -->
+                    <div id="editor-sub-trim">
+                        <div class="editor-row">
+                            <label>Dual Slider Controls (Range: <span id="trim-start-lbl" style="color:var(--accent);">0.0</span>s to <span id="trim-end-lbl" style="color:var(--accent);">3.0</span>s)</label>
+                            <div class="dual-slider-container">
+                                <div class="dual-slider-track-highlight" id="slider-highlight"></div>
+                                <input type="range" class="range-slider-input" id="slider-handle-start" min="0" max="10" step="0.1" value="0" oninput="handleDualSliderControl('start')">
+                                <input type="range" class="range-slider-input" id="slider-handle-end" min="0" max="10" step="0.1" value="3" oninput="handleDualSliderControl('end')">
+                            </div>
                         </div>
                     </div>
 
-                    <div class="editor-row" id="video-trimmer-row" style="display: none;">
-                        <label>Video Time Window Start Position: <span id="trim-val" style="color: var(--accent);">0.00</span>s (Creates a 3s clip)</label>
-                        <input type="range" class="range-slider" id="video-trim-offset" min="0" max="10" step="0.05" value="0" oninput="handleTrimmerSlide(this.value)">
-                    </div>
-
-                    <div class="editor-row" id="bg-remover-row" style="display: none;">
-                        <label>Local Machine-Learning Matrix Utilities</label>
-                        <button class="btn-secondary" id="ai-bg-btn" onclick="executeClientSideAiSegmentation()">Isolate Subject (AI Background Remover)</button>
+                    <!-- Sub-Panel B: WhatsApp Proportional Cropper -->
+                    <div id="editor-sub-crop" style="display: none;">
+                        <div class="editor-row">
+                            <label>Proportional Mask Size (Drag bounding box corners inside preview windows)</label>
+                            <div class="toggle-group" style="margin-top:0.5rem;">
+                                <div class="toggle-item active" id="toggle-rect" onclick="setFramingGeometry('square')">Classic Square (1:1)</div>
+                                <div class="toggle-item" id="toggle-circle" onclick="setFramingGeometry('circle')">Die-Cut Circle</div>
+                            </div>
+                        </div>
+                        <div class="editor-row" id="bg-remover-row" style="display: none;">
+                            <label>Local Machine-Learning Matrix Utilities</label>
+                            <button class="btn-secondary" id="ai-bg-btn" onclick="executeClientSideAiSegmentation()">Isolate Subject (AI Background Remover)</button>
+                        </div>
                     </div>
                 </div>
 
                 <div id="scratch-status" class="status-msg"></div>
-                <div class="preview-grid" id="scratch-preview"></div>
+                <div class="preview-grid" id="scratch-preview">
+                    <!-- Overlay bounds mount inside layout dynamically -->
+                    <div class="preview-item" id="scratch-preview-container-box" style="display:none;"></div>
+                </div>
                 <button class="btn-primary" id="scratch-download-btn" style="display:none" onclick="downloadScratchPack()">Compile & Download Pack</button>
             </div>
 
@@ -499,12 +568,12 @@
                 <h2>Custom Asset Integration Guide</h2>
                 <ul class="guide-steps">
                     <li>
-                        <h4>Normalize Asset Dimensions & Media Files</h4>
-                        <p>StickerHop now dynamically parses video clips and GIFs. Drop files directly onto the app window. Drag the slider track to scrub through the timeline and set your exact 3-second starting point visually.</p>
+                        <h4>Dual-Handle Visual Timeline Trimming</h4>
+                        <p>StickerHop now features a complete split-slider setup inspired by phone gallery editors. Grab the left or right edge boundaries to scrub frames and clip down to custom runtime blocks visually.</p>
                     </li>
                     <li>
-                        <h4>Apply Alpha Layer Masks & AI Cutting</h4>
-                        <p>Toggle the geometric shape matrices to transform layout boundaries instantly into uniform circles or uncompressed squares. For static photographs, tap the automated AI extraction button to decouple foreground assets without running remote server queries.</p>
+                        <h4>Fixed Dimension Canvas Cropping</h4>
+                        <p>Use the Cropper tab to wipe out black bars above and below. The bounding frame maintains a fixed aspect ratio context automatically to comply natively with sticker limits.</p>
                     </li>
                     <li>
                         <h4>Export Package to Chat Tray</h4>
@@ -543,7 +612,11 @@
         let selectedFramingGeometry = 'square';
         let activeRawScratchFile = null;
         let activeTrimStartOffset = 0;
+        let activeTrimEndOffset = 3;
         let activePreviewVideoElement = null;
+
+        // Custom Layout Crop Dimensions tracking variables
+        let cropScaleX = 0, cropScaleY = 0, cropScaleW = 1, cropScaleH = 1;
 
         // Binds browser window hooks to block external drag default tab overrides
         window.addEventListener("dragover", function(e) { e.preventDefault(); }, false);
@@ -551,13 +624,8 @@
 
         // Wire custom dropzones to override default tab loads
         document.querySelectorAll('.dropzone').forEach(zone => {
-            zone.addEventListener('dragover', function(e) {
-                e.preventDefault();
-                this.classList.add('dragover');
-            });
-            zone.addEventListener('dragleave', function() {
-                this.classList.remove('dragover');
-            });
+            zone.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('dragover'); });
+            zone.addEventListener('dragleave', function() { this.classList.remove('dragover'); });
             zone.addEventListener('drop', function(e) {
                 e.preventDefault();
                 this.classList.remove('dragover');
@@ -566,9 +634,6 @@
                     targetInput.files = e.dataTransfer.files;
                     targetInput.dispatchEvent(new Event('change'));
                 }
-            });
-            zone.addEventListener('click', function() {
-                this.querySelector('input[type="file"]').click();
             });
         });
 
@@ -596,50 +661,36 @@
         async function handleTgZipUpload(input) {
             const file = input.files[0];
             if (!file) return;
-
             const status = document.getElementById('tg-status');
             const preview = document.getElementById('tg-preview');
-            const downloadBtn = document.getElementById('tg-download-btn');
-            
             status.className = "status-msg info";
-            status.innerText = "Decompressing archive package data in browser thread...";
+            status.innerText = "Decompressing archive package data...";
             preview.innerHTML = "";
             compiledStickersArray = [];
 
             try {
                 const zip = await JSZip.loadAsync(file);
                 let filesProcessedCount = 0;
-
                 for (const [filename, zipEntry] of Object.entries(zip.files)) {
                     if (!zipEntry.dir && (filename.endsWith('.webp') || filename.endsWith('.png'))) {
                         filesProcessedCount++;
                         const blob = await zipEntry.async("blob");
-                        const fileUrl = URL.createObjectURL(blob);
-
                         compiledStickersArray.push({ name: `sticker_${filesProcessedCount}.webp`, blob: blob });
-
                         const wrapper = document.createElement('div');
                         wrapper.className = 'preview-item';
                         const img = document.createElement('img');
-                        img.src = fileUrl;
+                        img.src = URL.createObjectURL(blob);
                         wrapper.appendChild(img);
                         preview.appendChild(wrapper);
                     }
                 }
-
                 if (compiledStickersArray.length > 0) {
                     status.className = "status-msg success";
-                    status.innerText = `Successfully parsed ${filesProcessedCount} assets from archive. Ready to compile bundle.`;
-                    downloadBtn.style.display = "block";
-                } else {
-                    throw new Error("No compatible static asset file extensions (.webp/.png) detected within archive root.");
-                }
-
+                    status.innerText = `Successfully parsed ${filesProcessedCount} assets from archive.`;
+                    document.getElementById('tg-download-btn').style.display = "block";
+                } else { throw new Error("No compatible assets detected."); }
             } catch (err) {
                 status.className = "status-msg";
-                status.style.backgroundColor = "rgba(255, 82, 82, 0.1)";
-                status.style.color = "var(--danger)";
-                status.style.display = "block";
                 status.innerText = `Extraction failed: ${err.message}`;
             }
         }
@@ -660,9 +711,7 @@
             const anchorElement = document.createElement('a');
             anchorElement.href = downloadUrl;
             anchorElement.download = "stickerhop_migration_payload.zip";
-            document.body.appendChild(anchorElement);
             anchorElement.click();
-            document.body.removeChild(anchorElement);
         }
 
         // Processing Module: Custom Canvas Workspace Creator Studio Suite
@@ -672,89 +721,227 @@
 
             activeRawScratchFile = file;
             const status = document.getElementById('scratch-status');
-            const preview = document.getElementById('scratch-preview');
+            const previewContainer = document.getElementById('scratch-preview-container-box');
             const editorSuite = document.getElementById('scratch-editor-suite');
-            const trimmerRow = document.getElementById('video-trimmer-row');
+            const trimmerRow = document.getElementById('mode-trim-btn');
             const bgRow = document.getElementById('bg-remover-row');
-            const slider = document.getElementById('video-trim-offset');
 
             status.className = "status-msg info";
-            status.innerText = "Staging media elements into memory thread buffers...";
-            preview.innerHTML = "";
+            status.innerText = "Staging media elements into layout monitors...";
+            previewContainer.innerHTML = "";
+            previewContainer.style.display = "flex";
             editorSuite.style.display = "block";
             activePreviewVideoElement = null;
 
             if (file.type.startsWith('video/')) {
                 trimmerRow.style.display = "block";
                 bgRow.style.display = "none";
+                toggleEditorTab('trim');
                 
                 const videoEl = document.createElement('video');
                 videoEl.src = URL.createObjectURL(file);
                 videoEl.muted = true;
                 videoEl.playsInline = true;
-                
                 activePreviewVideoElement = videoEl;
 
-                // Dynamically sets slider parameters once video metadata is known
                 videoEl.onloadedmetadata = function() {
-                    const maxStart = Math.max(0, videoEl.duration - 3);
-                    slider.max = maxStart;
-                    slider.value = 0;
-                    activeTrimStartOffset = 0;
-                    document.getElementById('trim-val').innerText = "0.00";
+                    const duration = videoEl.duration;
+                    const sliderStart = document.getElementById('slider-handle-start');
+                    const sliderEnd = document.getElementById('slider-handle-end');
                     
-                    // Starts loop processing on target bounds
+                    sliderStart.max = duration;
+                    sliderEnd.max = duration;
+                    sliderStart.value = 0;
+                    sliderEnd.value = Math.min(duration, 3);
+                    
+                    activeTrimStartOffset = 0;
+                    activeTrimEndOffset = sliderEnd.value;
+                    
+                    updateDualSliderTrackHighlight();
+                    mountFixedAspectCropOverlay(videoEl);
                     runVideoEditorLoop();
                 };
                 
-                const wrapper = document.createElement('div');
-                wrapper.className = 'preview-item';
-                wrapper.appendChild(videoEl);
-                preview.appendChild(wrapper);
-                
+                previewContainer.appendChild(videoEl);
                 status.className = "status-msg success";
-                status.innerText = "Video loaded. Drag slider to visually adjust your 3-second loop windows.";
+                status.innerText = "Video ready. Use timeline track bar to set exact loop windows.";
                 document.getElementById('scratch-download-btn').style.display = "block";
             } else {
                 trimmerRow.style.display = "none";
                 bgRow.style.display = "block";
+                toggleEditorTab('crop');
                 
                 const imgEl = document.createElement('img');
                 imgEl.src = URL.createObjectURL(file);
                 
-                const wrapper = document.createElement('div');
-                wrapper.className = 'preview-item';
-                wrapper.appendChild(imgEl);
-                preview.appendChild(wrapper);
+                imgEl.onload = function() {
+                    mountFixedAspectCropOverlay(imgEl);
+                };
                 
+                previewContainer.appendChild(imgEl);
                 status.className = "status-msg success";
-                status.innerText = "Static asset verified. AI semantic cutout layer available.";
+                status.innerText = "Static asset verified. Use box modifiers to crop or click AI cutout.";
                 document.getElementById('scratch-download-btn').style.display = "block";
             }
         }
 
-        // Active Frame scrubbing tracker engine
-        function handleTrimmerSlide(val) {
-            activeTrimStartOffset = parseFloat(val);
-            document.getElementById('trim-val').innerText = activeTrimStartOffset.toFixed(2);
-            
-            if (activePreviewVideoElement) {
-                activePreviewVideoElement.currentTime = activeTrimStartOffset;
+        function toggleEditorTab(tab) {
+            document.getElementById('mode-trim-btn').classList.toggle('active', tab === 'trim');
+            document.getElementById('mode-crop-btn').classList.toggle('active', tab === 'crop');
+            document.getElementById('editor-sub-trim').style.display = tab === 'trim' ? 'block' : 'none';
+            document.getElementById('editor-sub-crop').style.display = tab === 'crop' ? 'block' : 'none';
+
+            const overlayBox = document.getElementById('crop-box-element');
+            if (overlayBox) {
+                overlayBox.style.display = tab === 'crop' ? 'block' : 'none';
             }
         }
 
-        // Keeps video looping strictly inside the 3-second window visually
+        // Gallery-Style Dual Handle Tracking Engine
+        function handleDualSliderControl(handleType) {
+            const sliderStart = document.getElementById('slider-handle-start');
+            const sliderEnd = document.getElementById('slider-handle-end');
+            
+            let startVal = parseFloat(sliderStart.value);
+            let endVal = parseFloat(sliderEnd.value);
+
+            if (handleType === 'start' && startVal >= endVal) {
+                sliderStart.value = endVal - 0.1;
+                startVal = endVal - 0.1;
+            } else if (handleType === 'end' && endVal <= startVal) {
+                sliderEnd.value = startVal + 0.1;
+                endVal = startVal + 0.1;
+            }
+
+            activeTrimStartOffset = startVal;
+            activeTrimEndOffset = endVal;
+
+            document.getElementById('trim-start-lbl').innerText = startVal.toFixed(1);
+            document.getElementById('trim-end-lbl').innerText = endVal.toFixed(1);
+
+            updateDualSliderTrackHighlight();
+
+            if (activePreviewVideoElement) {
+                activePreviewVideoElement.currentTime = handleType === 'start' ? startVal : endVal;
+            }
+        }
+
+        function updateDualSliderTrackHighlight() {
+            const sliderStart = document.getElementById('slider-handle-start');
+            const sliderEnd = document.getElementById('slider-handle-end');
+            const highlight = document.getElementById('slider-highlight');
+            
+            const max = parseFloat(sliderStart.max) || 10;
+            const leftPct = (parseFloat(sliderStart.value) / max) * 100;
+            const rightPct = 100 - ((parseFloat(sliderEnd.value) / max) * 100);
+
+            highlight.style.left = leftPct + '%';
+            highlight.style.right = rightPct + '%';
+        }
+
         function runVideoEditorLoop() {
             if (!activePreviewVideoElement) return;
-            
             activePreviewVideoElement.play();
-            
             activePreviewVideoElement.addEventListener('timeupdate', function() {
-                const endTime = activeTrimStartOffset + 3;
-                if (activePreviewVideoElement.currentTime >= endTime || activePreviewVideoElement.currentTime >= activePreviewVideoElement.duration) {
+                if (activePreviewVideoElement.currentTime >= activeTrimEndOffset || activePreviewVideoElement.currentTime < activeTrimStartOffset) {
                     activePreviewVideoElement.currentTime = activeTrimStartOffset;
                 }
             });
+        }
+
+        // WhatsApp Custom Proportional Box Mask Constructor
+        function mountFixedAspectCropOverlay(mediaEl) {
+            const container = document.getElementById('scratch-preview-container-box');
+            
+            // Wipe out older box instances
+            const oldBox = document.getElementById('crop-box-element');
+            if (oldBox) oldBox.remove();
+
+            const cropBox = document.createElement('div');
+            cropBox.id = 'crop-box-element';
+            cropBox.className = 'crop-overlay-box';
+            
+            container.appendChild(cropBox);
+
+            // Calculate bounding elements relative to CSS rendering frames
+            setTimeout(() => {
+                const rect = mediaEl.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+
+                const boxSize = Math.min(rect.width, rect.height) * 0.8;
+                
+                cropBox.style.width = boxSize + 'px';
+                cropBox.style.height = boxSize + 'px';
+                cropBox.style.left = (rect.left - containerRect.left + (rect.width - boxSize)/2) + 'px';
+                cropBox.style.top = (rect.top - containerRect.top + (rect.height - boxSize)/2) + 'px';
+                
+                if (document.getElementById('mode-crop-btn').classList.contains('active')) {
+                    cropBox.style.display = 'block';
+                }
+
+                // Initial map calculations
+                mapCropCoordinates(cropBox, mediaEl);
+                makeElementDraggable(cropBox, container, mediaEl);
+            }, 100);
+        }
+
+        function makeElementDraggable(elm, container, mediaEl) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            elm.onmousedown = dragMouseDown;
+
+            function dragMouseDown(e) {
+                e.preventDefault();
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                document.onmouseup = closeDragElement;
+                document.onmousemove = elementDrag;
+            }
+
+            function elementDrag(e) {
+                e.preventDefault();
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+
+                const mediaRect = mediaEl.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+
+                const maxLeft = mediaRect.left - containerRect.left;
+                const maxTop = mediaRect.top - containerRect.top;
+                const maxRight = maxLeft + mediaRect.width - elm.offsetWidth;
+                const maxBottom = maxTop + mediaRect.height - elm.offsetHeight;
+
+                let targetLeft = elm.offsetLeft - pos1;
+                let targetTop = elm.offsetTop - pos2;
+
+                // Keeps bounding boxes strictly locked inside the video frame boundaries
+                if (targetLeft < maxLeft) targetLeft = maxLeft;
+                if (targetTop < maxTop) targetTop = maxTop;
+                if (targetLeft > maxRight) targetLeft = maxRight;
+                if (targetTop > maxBottom) targetTop = maxBottom;
+
+                elm.style.left = targetLeft + "px";
+                elm.style.top = targetTop + "px";
+
+                mapCropCoordinates(elm, mediaEl);
+            }
+
+            function closeDragElement() {
+                document.onmouseup = null;
+                document.onmousemove = null;
+            }
+        }
+
+        function mapCropCoordinates(cropBox, mediaEl) {
+            const boxRect = cropBox.getBoundingClientRect();
+            const mediaRect = mediaEl.getBoundingClientRect();
+
+            // Maps relative CSS viewport scale parameters into internal canvas coordinates
+            cropScaleX = (boxRect.left - mediaRect.left) / mediaRect.width;
+            cropScaleY = (boxRect.top - mediaRect.top) / mediaRect.height;
+            cropScaleW = boxRect.width / mediaRect.width;
+            cropScaleH = boxRect.height / mediaRect.height;
         }
 
         function setFramingGeometry(shape) {
@@ -762,41 +949,27 @@
             document.getElementById('toggle-rect').classList.toggle('active', shape === 'square');
             document.getElementById('toggle-circle').classList.toggle('active', shape === 'circle');
             
-            const previewItem = document.querySelector('#scratch-preview .preview-item');
-            if(previewItem) {
-                previewItem.style.borderRadius = shape === 'circle' ? '50%' : '8px';
+            const cropBox = document.getElementById('crop-box-element');
+            if(cropBox) {
+                cropBox.style.borderRadius = shape === 'circle' ? '50%' : '0px';
             }
         }
 
         // Local Machine-Learning Execution Loop
         async function executeClientSideAiSegmentation() {
             if (!activeRawScratchFile || activeRawScratchFile.type.startsWith('video/')) return;
-            
             const status = document.getElementById('scratch-status');
             status.className = "status-msg info";
-            status.innerText = "Initializing WASM execution layers. Downloading neural map (~40MB, cached locally)...";
+            status.innerText = "Isolating foreground subject layer...";
 
             try {
                 const transparentBlob = await imglyBackgroundRemoval.removeBackground(activeRawScratchFile);
                 activeRawScratchFile = transparentBlob;
-                
-                const preview = document.getElementById('scratch-preview');
-                preview.innerHTML = "";
-                const imgEl = document.createElement('img');
-                imgEl.src = URL.createObjectURL(transparentBlob);
-                const wrapper = document.createElement('div');
-                wrapper.className = 'preview-item';
-                if(selectedFramingGeometry === 'circle') wrapper.style.borderRadius = '50%';
-                wrapper.appendChild(imgEl);
-                preview.appendChild(wrapper);
-
+                handleScratchUpload({ files: [transparentBlob] });
                 status.className = "status-msg success";
-                status.innerText = "AI Mask calculation complete. Background layer completely decoupled.";
+                status.innerText = "Background layer removed.";
             } catch (err) {
                 status.className = "status-msg";
-                status.style.backgroundColor = "rgba(255, 82, 82, 0.1)";
-                status.style.color = "var(--danger)";
-                status.style.display = "block";
                 status.innerText = `AI Matrix Error: ${err.message}`;
             }
         }
@@ -805,7 +978,7 @@
             if (!activeRawScratchFile) return;
             const status = document.getElementById('scratch-status');
             status.className = "status-msg info";
-            status.innerText = "Running layout normalization downsample loops...";
+            status.innerText = "Slicing and normalizing target spatial blocks...";
 
             const canvas = document.createElement('canvas');
             canvas.width = 1024;
@@ -826,14 +999,24 @@
                 video.src = URL.createObjectURL(activeRawScratchFile);
                 video.currentTime = activeTrimStartOffset;
                 video.onseeked = function() {
-                    ctx.drawImage(video, 0, 0, 1024, 1024);
+                    const sourceX = video.videoWidth * cropScaleX;
+                    const sourceY = video.videoHeight * cropScaleY;
+                    const sourceW = video.videoWidth * cropScaleW;
+                    const sourceH = video.videoHeight * cropScaleH;
+
+                    ctx.drawImage(video, sourceX, sourceY, sourceW, sourceH, 0, 0, 1024, 1024);
                     exportProcessedCanvas(canvas);
                 };
             } else {
                 const img = new Image();
                 img.src = URL.createObjectURL(activeRawScratchFile);
                 img.onload = function() {
-                    ctx.drawImage(img, 0, 0, 1024, 1024);
+                    const sourceX = img.naturalWidth * cropScaleX;
+                    const sourceY = img.naturalHeight * cropScaleY;
+                    const sourceW = img.naturalWidth * cropScaleW;
+                    const sourceH = img.naturalHeight * cropScaleH;
+
+                    ctx.drawImage(img, sourceX, sourceY, sourceW, sourceH, 0, 0, 1024, 1024);
                     exportProcessedCanvas(canvas);
                 };
             }
